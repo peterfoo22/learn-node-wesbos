@@ -22,6 +22,8 @@ mongoose.connection.on('error', (err) => {
 
 require('./models/Store.js');
 require('./models/User.js');
+require('./models/Review.js');
+
 
 
 

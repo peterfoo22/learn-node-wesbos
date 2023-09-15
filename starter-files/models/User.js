@@ -19,7 +19,12 @@ const userSchema = new Schema({
     type: String,
     required: 'Please supply a Name',
     trim: true
-  }
+  },
+  hearts:[
+    {
+      type: mongoose.Schema.ObjectId, ref: 'Store'
+    }
+  ]
 })
 
 

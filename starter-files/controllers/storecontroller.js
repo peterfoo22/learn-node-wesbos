@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const Store = mongoose.model('Store');
 const multer = require('multer')
-const jimp = require('jimp')
+const jimp = require('jimp');
+const User = require('../models/User');
 
 const multerOptions = {
   storage: multer.memoryStorage(),
@@ -40,6 +41,7 @@ exports.resize = async (req, res, next) =>{
 }
 
 exports.createStore = async (req, res) =>{
+  req.body.author = req.user._id;
   const store = new Store(req.body);
   await store.save();
   req.flash('success', `Successfully Created! - ${store.name}. Care to leave a review?` )
@@ -47,8 +49,31 @@ exports.createStore = async (req, res) =>{
 }
 
 exports.getStores = async (req, res)=>{
-  const stores = await Store.find();
-  res.render('stores', {"title": "Stores", stores});
+  const page = req.params.page || 1;
+  const limit = 6;
+  const skip = (page * limit) - limit
+
+  const storesPromise = Store
+  .find().skip(skip).limit(limit);
+
+  const countPromise = Store.count();
+
+  const [stores, count] = await Promise.all([storesPromise, countPromise]);
+ 
+  const pages = Math.ceil(count / limit); 
+
+  if(!stores.length && skip){
+    req.flash('info', "Hey you asked for page that doesn't exist")
+    res.redirect((`/stores/page/${pages}`))
+  }
+ 
+  res.render('stores', {"title": "Stores", stores, count, pages, page});
+}
+
+const confirmOwner =(store, user)=>{
+  if(!store.author.equals(user._id)){
+    throw Error('You must own store to edit it');
+  }
 }
 
 exports.editStore = async (req, res) =>{
@@ -67,7 +92,7 @@ exports.updateStore = async (req, res) =>{
 
 exports.getOneStore = async (req, res, next)=>{
 
-  const store = await Store.findOne({slug: req.params.id});
+  const store = await Store.findOne({slug: req.params.id}).populate('author reviews');
   if(!store){
     return next();
   }
@@ -82,4 +107,40 @@ exports.getStoresByTag = async (req, res) =>{
   const [tags, stores] = await Promise.all([tagsPromise, storesPromise]);
 
   res.render('tag',{tags, title: "Tags", tag, stores})
+}
+
+exports.searchStores = async(req, res)=>{
+  const stores = await Store.find({
+    $text:{
+      $search: req.query.q
+    }
+  },
+  {
+    score: {
+      $meta: 'textScore'
+    }
+  }).sort({
+    score: {$meta:'textScore'}
+  }).limit(5);
+
+  res.json(stores);
+}
+
+exports.heartStore = async (req, res) =>{
+  console.log(req.user)
+  const hearts = req.user.hearts.map(obj => obj.toString());
+  const operator = hearts.includes(req.params.id) ? '$pull' : '$addToSet';
+  const user = await User
+  .findByIdandUpdate(req.user.id, {
+    [operator]: {hearts: req.params.id}},
+    {new: true}
+  )
+  console.log(hearts)
+  res.json(hearts);
+}
+
+exports.getTopStores = async (req, res) =>{
+  const stores = await Store.getTopStores();
+  // res.json(stores)
+  res.render('topStores', {stores, title: "Top Stores"})
 }
